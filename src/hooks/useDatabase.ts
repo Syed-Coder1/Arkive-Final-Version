@@ -655,14 +655,5 @@ export function useDatabase() {
     getTasksByEmployee: tasks.getTasksByEmployee,
     getTasksByAssigner: tasks.getTasksByAssigner,
     refetchTasks: tasks.refetch,
-
-    // Client Access Requests
-    clientAccessRequests: clientAccessRequests.requests,
-    clientAccessRequestsLoading: clientAccessRequests.loading,
-    createClientAccessRequest: clientAccessRequests.createRequest,
-    updateClientAccessRequest: clientAccessRequests.updateRequest,
-    deleteClientAccessRequest: clientAccessRequests.deleteRequest,
-    getClientAccessRequestsByEmployee: clientAccessRequests.getRequestsByEmployee,
-    refetchClientAccessRequests: clientAccessRequests.refetch,
   };
 }

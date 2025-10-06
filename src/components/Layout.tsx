@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import {
-  Home, Receipt, Users, CreditCard, Activity, 
+  Home, Receipt, Users, CreditCard, Activity,
   Settings, LogOut, Menu, X, Moon, Sun, ChevronLeft, Clock,
   ChevronRight, Bell, Calculator, Shield, User, Target
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTasks } from '../hooks/useTasks';
 import { clsx } from 'clsx';
+import { SyncStatus } from './SyncStatus';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -278,6 +279,9 @@ export function Layout({ children, currentPage, onPageChange }: LayoutProps) {
           onClick={() => setSidebarOpen(false)}
         />
       )}
+
+      {/* Sync Status Indicator */}
+      <SyncStatus />
     </div>
   );
 }

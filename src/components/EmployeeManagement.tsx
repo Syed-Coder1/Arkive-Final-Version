@@ -1,24 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Users, 
-  Plus, 
-  Edit, 
-  Trash2, 
-  Search, 
-  Filter,
-  UserPlus,
-  Building,
-  Mail,
-  User,
-  Calendar,
-  CheckCircle,
-  XCircle,
-  AlertCircle,
-  Clock,
-  Timer,
-  Shield,
-  Phone, // Added FileText as a replacement for Receipt
-} from 'lucide-react';
+import { Users, Plus, CreditCard as Edit, Trash2, Search, Filter, UserPlus, Building, Mail, User, Calendar, CheckCircle, XCircle, AlertCircle, Clock, Timer, Shield, Phone } from 'lucide-react';
 import { useEmployees } from '../hooks/useEmployees';
 import { useAttendance } from '../hooks/useAttendance';
 import { useAuth } from '../contexts/AuthContext';
@@ -106,22 +87,28 @@ const EmployeeManagement: React.FC = () => {
         return;
       }
 
+      // Sanitize username
+      const sanitizedUsername = formData.username.trim().toLowerCase();
+
       let userId = editingEmployee?.userId;
       if (!editingEmployee) {
         // Check if username already exists
-        const existingUser = await db.getUserByUsername(formData.username);
+        const existingUser = await db.getUserByUsername(sanitizedUsername);
         if (existingUser) {
           showMessage('Username already exists', 'error');
           return;
         }
-        // Create user account
+        // Create user account first and wait for it to complete
         const user = await db.createUser({
-          username: formData.username,
+          username: sanitizedUsername,
           password: formData.password,
           role: formData.role === 'manager' ? 'admin' : 'employee',
           createdAt: new Date(),
         });
         userId = user.id;
+
+        // Wait a bit to ensure the user is properly saved
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
 
       const employeeData = {
@@ -132,7 +119,7 @@ const EmployeeManagement: React.FC = () => {
         createdAt: new Date(),
         updatedAt: new Date(),
         userId, // Link to user account
-        username: formData.username,
+        username: sanitizedUsername || formData.username,
         // Do NOT store password in employee record
         password: undefined,
       };
@@ -142,7 +129,7 @@ const EmployeeManagement: React.FC = () => {
         showMessage('Employee updated successfully!', 'success');
       } else {
         await createEmployee(employeeData);
-        showMessage('Employee created successfully!', 'success');
+        showMessage(`Employee created! Login: ${sanitizedUsername}`, 'success');
       }
 
       resetForm();
