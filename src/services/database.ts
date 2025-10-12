@@ -344,23 +344,31 @@ class DatabaseService {
   }
 
   // ------------------ RECEIPTS ------------------
-  async createReceipt(receipt: Omit<Receipt, 'id' | 'createdAt'>): Promise<Receipt> {
+  async createReceipt(receipt: Omit<Receipt, 'id' | 'createdAt'> | Receipt): Promise<Receipt> {
     const store = await this.getObjectStore('receipts', 'readwrite');
-    const newReceipt: Receipt = { 
-      ...receipt, 
-      id: crypto.randomUUID(), 
-      createdAt: new Date(), 
-      lastModified: new Date() 
+
+    // Check if this is a receipt being synced from Firebase (has id)
+    const isSync = 'id' in receipt && receipt.id;
+
+    const newReceipt: Receipt = isSync ? {
+      ...receipt as Receipt,
+      lastModified: receipt.lastModified || new Date()
+    } : {
+      ...receipt,
+      id: crypto.randomUUID(),
+      createdAt: new Date(),
+      lastModified: new Date()
     };
-    
-    if (this.syncEnabled) {
-      firebaseSync.addToSyncQueue({ 
-        type: 'create', 
-        store: 'receipts', 
-        data: newReceipt 
+
+    // Only add to sync queue if this is a local creation
+    if (this.syncEnabled && !isSync) {
+      firebaseSync.addToSyncQueue({
+        type: 'create',
+        store: 'receipts',
+        data: newReceipt
       }).catch(console.warn);
     }
-    
+
     return new Promise((resolve, reject) => {
       const req = store.add(newReceipt);
       req.onsuccess = () => resolve(newReceipt);
@@ -425,23 +433,31 @@ class DatabaseService {
   }
 
   // ------------------ EXPENSES ------------------
-  async createExpense(expense: Omit<Expense, 'id' | 'createdAt'>): Promise<Expense> {
+  async createExpense(expense: Omit<Expense, 'id' | 'createdAt'> | Expense): Promise<Expense> {
     const store = await this.getObjectStore('expenses', 'readwrite');
-    const newExpense: Expense = { 
-      ...expense, 
-      id: crypto.randomUUID(), 
-      createdAt: new Date(), 
-      lastModified: new Date() 
+
+    // Check if this is an expense being synced from Firebase (has id)
+    const isSync = 'id' in expense && expense.id;
+
+    const newExpense: Expense = isSync ? {
+      ...expense as Expense,
+      lastModified: expense.lastModified || new Date()
+    } : {
+      ...expense,
+      id: crypto.randomUUID(),
+      createdAt: new Date(),
+      lastModified: new Date()
     };
-    
-    if (this.syncEnabled) {
-      firebaseSync.addToSyncQueue({ 
-        type: 'create', 
-        store: 'expenses', 
-        data: newExpense 
+
+    // Only add to sync queue if this is a local creation
+    if (this.syncEnabled && !isSync) {
+      firebaseSync.addToSyncQueue({
+        type: 'create',
+        store: 'expenses',
+        data: newExpense
       }).catch(console.warn);
     }
-    
+
     return new Promise((resolve, reject) => {
       const req = store.add(newExpense);
       req.onsuccess = () => resolve(newExpense);

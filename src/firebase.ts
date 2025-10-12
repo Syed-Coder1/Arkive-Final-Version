@@ -1,8 +1,6 @@
-// firebase.ts
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, signOut } from 'firebase/auth';
-import { getDatabase, onValue, ref } from 'firebase/database';
-import { db as localDb } from "./services/database";
+import { getAuth } from 'firebase/auth';
+import { getDatabase } from 'firebase/database';
 
 const firebaseConfig = {
   apiKey: "AIzaSyDIo7q8OuI1P63q9t9E1s-ENQjBdCd37nI",
@@ -17,20 +15,3 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const rtdb = getDatabase(app);
-
-// Start realtime sync for receipts
-export function startRealtimeListeners() {
-  const receiptsRef = ref(rtdb, 'receipts');
-  onValue(receiptsRef, async (snapshot) => {
-    const data = snapshot.val() || {};
-    const receipts = Object.values(data);
-
-    // Clear local IndexedDB and replace with Firebase data
-    await localDb.clearStore('receipts');
-    for (const r of receipts) {
-      await localDb.createReceipt(r);
-    }
-
-    console.log('Receipts updated from Firebase');
-  });
-}

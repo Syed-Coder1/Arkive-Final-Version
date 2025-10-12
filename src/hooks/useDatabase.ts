@@ -24,57 +24,28 @@ export function useClients() {
 
   useEffect(() => {
     fetchClients();
-    
+
     // Setup realtime listener with error handling
     try {
-      firebaseSync.setupRealtimeListener('clients', (remoteData: Client[]) => {
+      firebaseSync.setupRealtimeListener('clients', async (remoteData: Client[]) => {
         try {
-          if (Array.isArray(remoteData)) {
-            setClients(prevClients => {
-              const clientMap = new Map<string, Client>();
-              
-              // Add existing clients
-              prevClients.forEach(client => {
-                if (client && client.id) {
-                  clientMap.set(client.id, client);
+          if (Array.isArray(remoteData) && remoteData.length > 0) {
+            // Update IndexedDB with remote data
+            for (const remoteClient of remoteData) {
+              if (remoteClient && remoteClient.id) {
+                try {
+                  await db.updateClient(remoteClient);
+                } catch (updateError) {
+                  console.warn(`Failed to update client ${remoteClient.id}:`, updateError);
                 }
-              });
-              
-              // Merge remote data (Firebase data takes precedence)
-              remoteData.forEach(remoteClient => {
-                if (remoteClient && remoteClient.id) {
-                  try {
-                    const processedClient = {
-                      ...remoteClient,
-                      createdAt: remoteClient.createdAt instanceof Date ? remoteClient.createdAt : 
-                        (() => {
-                          const date = new Date(remoteClient.createdAt);
-                          return isNaN(date.getTime()) ? new Date() : date;
-                        })(),
-                      updatedAt: remoteClient.updatedAt instanceof Date ? remoteClient.updatedAt : 
-                        (() => {
-                          const date = new Date(remoteClient.updatedAt);
-                          return isNaN(date.getTime()) ? new Date() : date;
-                        })(),
-                      lastModified: remoteClient.lastModified instanceof Date ? remoteClient.lastModified : 
-                        (() => {
-                          const date = new Date(remoteClient.lastModified || remoteClient.updatedAt);
-                          return isNaN(date.getTime()) ? new Date() : date;
-                        })()
-                    };
-                    clientMap.set(remoteClient.id, processedClient);
-                  } catch (dateError) {
-                    console.warn('Error processing client dates:', dateError);
-                    clientMap.set(remoteClient.id, remoteClient);
-                  }
-                }
-              });
-              
-              return Array.from(clientMap.values()).sort((a, b) => 
-                new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-              );
-            });
-            console.log(`✅ Clients updated from Firebase: ${remoteData.length} items`);
+              }
+            }
+
+            // Refresh the client list from IndexedDB
+            await fetchClients();
+            console.log(`✅ Clients synced from Firebase: ${remoteData.length} items`);
+          } else if (Array.isArray(remoteData) && remoteData.length === 0) {
+            console.log('📡 No clients in Firebase');
           } else {
             console.warn('⚠️ Invalid clients data from Firebase:', remoteData);
           }
@@ -147,54 +118,42 @@ export function useReceipts() {
 
   useEffect(() => {
     fetchReceipts();
-    
+
     // Setup realtime listener
-    firebaseSync.setupRealtimeListener('receipts', (remoteData: Receipt[]) => {
-      if (Array.isArray(remoteData)) { // Ensure it's an array
-        setReceipts(prevReceipts => {
-          // Create a map to merge data properly
-          const receiptMap = new Map<string, Receipt>();
-          
-          // Add existing receipts
-          prevReceipts.forEach(receipt => {
-            if (receipt && receipt.id) {
-              receiptMap.set(receipt.id, receipt);
-            }
-          });
-          
-          // Merge remote data (Firebase data takes precedence)
-          remoteData.forEach(remoteReceipt => {
+    firebaseSync.setupRealtimeListener('receipts', async (remoteData: Receipt[]) => {
+      try {
+        if (Array.isArray(remoteData) && remoteData.length > 0) {
+          // Update IndexedDB with remote data
+          for (const remoteReceipt of remoteData) {
             if (remoteReceipt && remoteReceipt.id) {
-              // Convert date strings to Date objects
-              const processedReceipt = {
-                ...remoteReceipt,
-                date: remoteReceipt.date instanceof Date ? remoteReceipt.date : 
-                  (() => {
-                    const date = new Date(remoteReceipt.date);
-                    return isNaN(date.getTime()) ? new Date() : date;
-                  })(),
-                createdAt: remoteReceipt.createdAt instanceof Date ? remoteReceipt.createdAt : 
-                  (() => {
-                    const date = new Date(remoteReceipt.createdAt);
-                    return isNaN(date.getTime()) ? new Date() : date;
-                  })(),
-                lastModified: remoteReceipt.lastModified instanceof Date ? remoteReceipt.lastModified : 
-                  (() => {
-                    const date = new Date(remoteReceipt.lastModified || remoteReceipt.createdAt);
-                    return isNaN(date.getTime()) ? new Date() : date;
-                  })()
-              };
-              receiptMap.set(remoteReceipt.id, processedReceipt);
+              try {
+                // Check if receipt exists in IndexedDB
+                const existingReceipts = await db.getAllReceipts();
+                const exists = existingReceipts.some(r => r.id === remoteReceipt.id);
+
+                if (!exists) {
+                  // Create new receipt
+                  await db.createReceipt({
+                    ...remoteReceipt,
+                    id: remoteReceipt.id
+                  });
+                }
+              } catch (updateError) {
+                console.warn(`Failed to sync receipt ${remoteReceipt.id}:`, updateError);
+              }
             }
-          });
-          
-          return Array.from(receiptMap.values()).sort((a, b) => 
-            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-          );
-        });
-        console.log(`✅ Receipts updated from Firebase: ${remoteData.length} items`);
-      } else {
-        console.warn('⚠️ Invalid receipts data from Firebase:', remoteData);
+          }
+
+          // Refresh the receipt list from IndexedDB
+          await fetchReceipts();
+          console.log(`✅ Receipts synced from Firebase: ${remoteData.length} items`);
+        } else if (Array.isArray(remoteData) && remoteData.length === 0) {
+          console.log('📡 No receipts in Firebase');
+        } else {
+          console.warn('⚠️ Invalid receipts data from Firebase:', remoteData);
+        }
+      } catch (error) {
+        console.error('Error processing receipts realtime data:', error);
       }
     });
 
@@ -253,23 +212,40 @@ export function useExpenses() {
 
   useEffect(() => {
     fetchExpenses();
-    
+
     // Setup realtime listener
-    firebaseSync.setupRealtimeListener('expenses', (remoteData: Expense[]) => {
-      if (remoteData.length >= 0) { // Allow empty arrays
-        setExpenses(prevExpenses => {
-          const expenseMap = new Map(prevExpenses.map(e => [e.id, e]));
-          
-          // Merge remote data (Firebase takes precedence)
-          remoteData.forEach(remoteExpense => {
-            expenseMap.set(remoteExpense.id, remoteExpense);
-          });
-          
-          return Array.from(expenseMap.values()).sort((a, b) => 
-            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-          );
-        });
-        console.log(`✅ Expenses updated from Firebase: ${remoteData.length} items`);
+    firebaseSync.setupRealtimeListener('expenses', async (remoteData: Expense[]) => {
+      try {
+        if (Array.isArray(remoteData) && remoteData.length > 0) {
+          // Update IndexedDB with remote data
+          for (const remoteExpense of remoteData) {
+            if (remoteExpense && remoteExpense.id) {
+              try {
+                const existing = await db.getAllExpenses();
+                const exists = existing.some(e => e.id === remoteExpense.id);
+
+                if (exists) {
+                  await db.updateExpense(remoteExpense);
+                } else {
+                  await db.createExpense({
+                    ...remoteExpense,
+                    id: remoteExpense.id
+                  });
+                }
+              } catch (updateError) {
+                console.warn(`Failed to sync expense ${remoteExpense.id}:`, updateError);
+              }
+            }
+          }
+
+          // Refresh the expense list from IndexedDB
+          await fetchExpenses();
+          console.log(`✅ Expenses synced from Firebase: ${remoteData.length} items`);
+        } else if (Array.isArray(remoteData) && remoteData.length === 0) {
+          console.log('📡 No expenses in Firebase');
+        }
+      } catch (error) {
+        console.error('Error processing expenses realtime data:', error);
       }
     });
 

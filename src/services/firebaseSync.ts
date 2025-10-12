@@ -186,7 +186,13 @@ class FirebaseSyncService {
   }
 
   private async processSyncQueue() {
-    if (!this.isOnline || this.syncQueue.length === 0 || this.syncInProgress || !firebaseAuth.currentUser) {
+    if (!this.isOnline || this.syncQueue.length === 0 || this.syncInProgress) {
+      return;
+    }
+
+    // Check Firebase auth
+    if (!firebaseAuth.currentUser) {
+      console.warn('⚠️ No Firebase auth user, skipping sync queue processing');
       return;
     }
 
@@ -319,33 +325,51 @@ class FirebaseSyncService {
   }
 
   private deserializeFromFirebase(item: any): any {
+    if (!item || typeof item !== 'object') {
+      return item;
+    }
+
     const deserialized = { ...item };
-    
+
     // Convert ISO strings back to Date objects
     const dateFields = [
-      'date', 'createdAt', 'updatedAt', 'lastLogin', 'uploadedAt', 
-      'joinDate', 'timestamp', 'lastModified', 'lastAccessed', 'checkIn', 'checkOut'
+      'date', 'createdAt', 'updatedAt', 'lastLogin', 'uploadedAt',
+      'joinDate', 'timestamp', 'lastModified', 'lastAccessed', 'checkIn', 'checkOut', 'requestedAt', 'deadline'
     ];
-    
+
     dateFields.forEach(field => {
       if (deserialized[field] && typeof deserialized[field] === 'string') {
         try {
           const date = new Date(deserialized[field]);
           if (!isNaN(date.getTime())) {
             deserialized[field] = date;
+          } else {
+            console.warn(`Invalid date for field ${field}:`, deserialized[field]);
+            deserialized[field] = new Date();
           }
         } catch (error) {
           console.warn(`Failed to parse date field ${field}:`, error);
+          deserialized[field] = new Date();
         }
       }
     });
 
     // Handle nested date objects in accessLog
     if (deserialized.accessLog && Array.isArray(deserialized.accessLog)) {
-      deserialized.accessLog = deserialized.accessLog.map((log: any) => ({
-        ...log,
-        timestamp: log.timestamp ? new Date(log.timestamp) : new Date()
-      }));
+      deserialized.accessLog = deserialized.accessLog.map((log: any) => {
+        if (!log || typeof log !== 'object') return log;
+        return {
+          ...log,
+          timestamp: log.timestamp ? (() => {
+            try {
+              const date = new Date(log.timestamp);
+              return isNaN(date.getTime()) ? new Date() : date;
+            } catch {
+              return new Date();
+            }
+          })() : new Date()
+        };
+      });
     }
 
     return deserialized;
@@ -358,14 +382,8 @@ class FirebaseSyncService {
     }
 
     // Check if we have Firebase auth before setting up listener
-    try {
-      const { auth } = require('../firebase');
-      if (!auth.currentUser) {
-        console.warn(`⚠️ No Firebase auth user for ${storeName} listener, skipping...`);
-        return;
-      }
-    } catch (error) {
-      console.warn('Firebase auth check failed:', error);
+    if (!firebaseAuth.currentUser) {
+      console.warn(`⚠️ No Firebase auth user for ${storeName} listener, skipping...`);
       return;
     }
 
@@ -373,14 +391,15 @@ class FirebaseSyncService {
     const listener = onValue(storeRef, (snapshot) => {
       try {
         const data = snapshot.val();
-        if (data) {
+        if (data && typeof data === 'object') {
           const items = Object.values(data)
-            .map((item: any) => this.deserializeFromFirebase(item))
-            .filter((item: any) => item.syncedBy !== this.deviceId); // Don't sync back our own changes
-          
+            .filter((item: any) => item && typeof item === 'object' && item.id)
+            .map((item: any) => this.deserializeFromFirebase(item));
+
           console.log(`📡 Realtime update for ${storeName}: ${items.length} items`);
           callback(items);
         } else {
+          console.log(`📡 Empty or invalid data for ${storeName}`);
           callback([]);
         }
       } catch (error) {
@@ -389,6 +408,7 @@ class FirebaseSyncService {
       }
     }, (error) => {
       console.error(`Realtime listener error for ${storeName}:`, error);
+      // Don't callback with empty array on error - let existing data persist
     });
 
     this.listeners[storeName] = { ref: storeRef, listener };

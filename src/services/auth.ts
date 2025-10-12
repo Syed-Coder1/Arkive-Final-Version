@@ -13,8 +13,17 @@ class AuthService {
   async init(): Promise<void> {
     try {
       console.log('🔐 Initializing authentication service...');
+
+      // Sign in to Firebase anonymously first
+      try {
+        await signInAnonymously(firebaseAuth);
+        console.log('✅ Firebase anonymous authentication successful');
+      } catch (firebaseError) {
+        console.warn('⚠️ Firebase anonymous sign-in failed:', firebaseError);
+      }
+
       let isConnected = false;
-      
+
       // Check Firebase connection and sync users
       try {
         isConnected = await firebaseSync.checkConnection();
@@ -22,11 +31,11 @@ class AuthService {
           try {
             console.log('🔄 Syncing users from Firebase...');
             const firebaseUsers = await firebaseSync.getStoreFromFirebase('users');
-            
+
             // Only clear and sync if we have Firebase users
             if (firebaseUsers.length > 0) {
               await db.clearStore('users');
-              
+
               for (const user of firebaseUsers) {
                 await db.createUserDirect({
                   id: user.id,
@@ -178,12 +187,14 @@ class AuthService {
       // Start session monitoring
       this.startSessionMonitoring();
 
-      // Sign in to Firebase anonymously for database access
-      try {
-        await signInAnonymously(firebaseAuth);
-        console.log('✅ Firebase anonymous authentication successful');
-      } catch (firebaseError) {
-        console.warn('⚠️ Firebase anonymous sign-in failed:', firebaseError);
+      // Check if we need to sign in to Firebase (only if not already signed in)
+      if (!firebaseAuth.currentUser) {
+        try {
+          await signInAnonymously(firebaseAuth);
+          console.log('✅ Firebase anonymous authentication successful');
+        } catch (firebaseError) {
+          console.warn('⚠️ Firebase anonymous sign-in failed:', firebaseError);
+        }
       }
 
       // Perform full sync and setup realtime listeners
